@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Shapes
-import qs.Commons
 
 // The mark is whichever AirPods the daemon reports, drawn from Apple's own product outlines.
 Item {

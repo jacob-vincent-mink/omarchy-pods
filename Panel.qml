@@ -1,27 +1,30 @@
 import QtQuick
+import Omarchy.PluginPresentation 1.0
+import Omarchy.PluginPresentation 1.0 as Presentation
 import QtQuick.Controls
 import QtQuick.Layouts
-import Quickshell
-import Quickshell.Io
-import qs.Commons
-import qs.Ui
 import "Model.js" as Model
 
-Panel {
+Presentation.Panel {
   id: root
   moduleName: "io.github.thisisgm.omapods"
-  ipcTarget: "omapods"
-  manageIpc: false
+  surfaceTarget: "airpods"
+
+  width:Style.space(380)
+  height:Style.space(560)
+  opened: true
+  property var inputRegions: [{x: 0, y: 0, width: width, height: height}]
+  readonly property bool acceptsKeyboardFocus: true
+  readonly property int maximumFramesPerSecond: 30
 
   property int cursorIndex: 0
   property bool cursorActive: false
 
   readonly property bool hideWhenDisconnected: setting("hideWhenDisconnected", true) === true
-  readonly property color foreground: bar ? bar.foreground : Color.foreground
-  readonly property color urgent: bar ? bar.urgent : Color.urgent
+  readonly property color foreground: "#e7e9ee"
+  readonly property color urgent: "#ef7d8b"
   readonly property color dim: Qt.darker(foreground, 1.55)
-  readonly property color barIconColor: pods.hasAirPods ? barForeground : Qt.darker(barForeground, 1.55)
-  readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
+  readonly property string fontFamily:Style.font.family
   // Say nothing extra once a section already explains the state.
   readonly property bool guidanceVisible: !pods.hasAirPods && !pods.hasBattery && !pods.schemaUnsupported
 
@@ -104,9 +107,14 @@ Panel {
     cursorIndex = at
   }
 
-  visible: !hideWhenDisconnected || pods.hasAirPods || pods.hasBattery
-  implicitWidth: button.implicitWidth
-  implicitHeight: button.implicitHeight
+  function dismiss() {
+    runtime.requestSurfaceIntent("airpods", "dismiss")
+  }
+
+  Component.onCompleted: {
+    pods.refresh()
+    Qt.callLater(function () { keyCatcher.forceActiveFocus() })
+  }
 
   onOpenedChanged: if (opened) {
     cursorActive = false
@@ -121,46 +129,16 @@ Panel {
     settings: root.settings
   }
 
-  IpcHandler {
-    target: root.ipcTarget
-    function open(): void { root.open() }
-    function close(): void { root.close() }
-    function toggle(): void { root.toggle() }
-    function refresh(): string { pods.refresh(); return "ok" }
-    function noise(): string { pods.cycleNoiseMode(); return "ok" }
-    function status(): string { return Model.noiseModeName(pods.noiseMode) }
-  }
-
-  BarIconButton {
-    id: button
-    anchors.fill: parent
-    bar: root.bar
-    iconComponent: Component {
-      Item {
-        AirPodsIcon {
-          anchors.centerIn: parent
-          // A pair of buds is wider than it is tall, so it takes a size above the stock 12 to carry the row.
-          iconSize: Style.space(13)
-          color: root.barIconColor
-          variant: root.podsVariant
-        }
-      }
-    }
-    onPressed: function (buttonCode) {
-      if (buttonCode === Qt.RightButton) pods.cycleNoiseMode()
-      else root.toggle()
-    }
-  }
-
   KeyboardPanel {
     id: panel
-    anchorItem: button
+    anchorItem: root
     owner: root
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(380))
-    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(560))
+    contentWidth: panel.fittedContentWidth( Style.space(380))
+    contentHeight: panel.fittedContentHeight(column.implicitHeight,Style.space(560))
+    color: "#151820"
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -171,8 +149,7 @@ Panel {
         else if (dx !== 0) root.nudgeCursor(dx)
       }
       onActivateRequested: if (root.cursorActive) root.activateCursor()
-      onCloseRequested: root.close()
-      onTabRequested: function (direction) { root.switchPanel(direction) }
+      onCloseRequested: root.dismiss()
       onTextKey: function (t) {
         var key = String(t).toLowerCase()
         if (key === "r") pods.refresh()
@@ -201,7 +178,7 @@ Panel {
         Column {
           id: column
           width: panelFlick.width
-          spacing: Style.space(12)
+          spacing:Style.space(12)
 
           PanelHero {
             id: hero
@@ -214,10 +191,16 @@ Panel {
             foreground: root.foreground
             fontFamily: root.fontFamily
             iconOpacity: pods.hasAirPods ? 1.0 : 0.5
+            minimumHeight: 72
+            labelLeftMargin:Style.space(14)
+            labelSpacing:Style.space(2)
+            uppercaseMeta: true
+            boldMeta: true
+            metaLetterSpacing: 1.2
             iconComponent: Component {
               AirPodsIcon {
                 // Same reason as the bar: display leaves the wide marks short against a two line title.
-                iconSize: Style.font.displayLarge
+                iconSize:Style.font.displayLarge
                 color: pods.hasAirPods ? root.foreground : root.dim
                 variant: root.podsVariant
               }
@@ -232,24 +215,37 @@ Panel {
             text: pods.actionStatus !== "" ? pods.actionStatus : pods.lastError
             color: root.urgent
             font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
+            font.pixelSize:Style.font.bodySmall
             wrapMode: Text.WordWrap
+          }
+
+          Text {
+            visible: !pods.controlPermissionGranted
+            width: parent.width
+            text: pods.controlPermissionMessage
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize:Style.font.caption
+            horizontalAlignment: Text.AlignHCenter
+            textFormat: Text.PlainText
           }
 
           Column {
             visible: pods.hasBattery
             width: parent.width
-            spacing: Style.space(10)
+            spacing:Style.space(10)
 
             PanelSectionHeader {
               text: "BATTERY"
               foreground: root.foreground
               fontFamily: root.fontFamily
+              opacity: 0.6
+              letterSpacing: 1.2
             }
 
             Column {
               width: parent.width
-              spacing: Style.space(6)
+              spacing:Style.space(6)
 
               // A Max has one battery and no case, so the pod trio would draw two dashes and a phantom case.
               PodRow {
@@ -273,22 +269,25 @@ Panel {
           PanelSeparator {
             visible: pods.hasBattery && pods.hasAirPods
             foreground: root.foreground
+            lineOpacity: 0.15
           }
 
           Column {
             visible: root.modesVisible
             width: parent.width
-            spacing: Style.space(10)
+            spacing:Style.space(10)
 
             PanelSectionHeader {
               text: "LISTENING MODE"
               foreground: root.foreground
               fontFamily: root.fontFamily
+              opacity: 0.6
+              letterSpacing: 1.2
             }
 
             Column {
               width: parent.width
-              spacing: Style.space(6)
+              spacing:Style.space(6)
 
               Repeater {
                 model: root.modes
@@ -309,12 +308,13 @@ Panel {
           PanelSeparator {
             visible: root.caVisible || root.oneBudVisible
             foreground: root.foreground
+            lineOpacity: 0.15
           }
 
           Column {
             visible: root.caVisible || root.oneBudVisible
             width: parent.width
-            spacing: Style.space(6)
+            spacing:Style.space(6)
 
             ToggleRow {
               visible: root.caVisible
@@ -340,12 +340,13 @@ Panel {
           PanelSeparator {
             visible: pods.hasAirPods
             foreground: root.foreground
+            lineOpacity: 0.15
           }
 
           Column {
             visible: pods.hasAirPods
             width: parent.width
-            spacing: Style.space(6)
+            spacing:Style.space(6)
 
             ValueRow {
               width: parent.width
@@ -364,7 +365,7 @@ Panel {
               : "Start the librepods daemon to see battery and listening controls."
             color: root.dim
             font.family: root.fontFamily
-            font.pixelSize: Style.font.body
+            font.pixelSize:Style.font.body
             wrapMode: Text.WordWrap
             horizontalAlignment: Text.AlignHCenter
           }
@@ -412,7 +413,7 @@ Panel {
       id: podLayout
       anchors.left: parent.left
       anchors.right: parent.right
-      spacing: Style.space(8)
+      spacing:Style.space(8)
 
       Text {
         textFormat: Text.PlainText
@@ -420,16 +421,16 @@ Panel {
         color: root.foreground
         opacity: 0.6
         font.family: root.fontFamily
-        font.pixelSize: Style.font.bodySmall
-        // Style.space(44) was cut for Left, Right and Case, so a longer label takes the room it needs.
-        Layout.preferredWidth: Math.max(Style.space(44), implicitWidth + Style.space(10))
+        font.pixelSize:Style.font.bodySmall
+        //Style.space(44) was cut for Left, Right and Case, so a longer label takes the room it needs.
+        Layout.preferredWidth: Math.max( Style.space(44), implicitWidth +Style.space(10))
       }
 
       Rectangle {
         id: meterTrack
         Layout.fillWidth: true
         Layout.alignment: Qt.AlignVCenter
-        implicitHeight: Style.space(6)
+        implicitHeight:Style.space(6)
         radius: height / 2
         color: Qt.darker(root.foreground, 3.2)
 
@@ -446,9 +447,9 @@ Panel {
         text: Model.levelText(podRow.pod.level)
         color: root.foreground
         font.family: root.fontFamily
-        font.pixelSize: Style.font.bodySmall
+        font.pixelSize:Style.font.bodySmall
         horizontalAlignment: Text.AlignRight
-        Layout.preferredWidth: Style.space(38)
+        Layout.preferredWidth:Style.space(38)
       }
 
       Text {
@@ -456,14 +457,14 @@ Panel {
         text: podRow.metaText
         color: root.dim
         font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
+        font.pixelSize:Style.font.caption
         elide: Text.ElideRight
-        Layout.preferredWidth: Style.space(56)
+        Layout.preferredWidth:Style.space(56)
       }
     }
   }
 
-  component ModeRow: CursorSurface {
+  component ModeRow:  CursorSurface {
     id: modeRow
     property int mode: 0
 
@@ -472,12 +473,17 @@ Panel {
 
     hasCursor: root.rowHasCursor(rowName)
     foreground: root.foreground
-    implicitHeight: modeLabel.implicitHeight + Style.spacing.rowPaddingX
+    cursorOpacity: 0.12
+    radius: 6
+    enabled: pods.canControl("set-listening-mode")
+    opacity: enabled ? 1.0 : 0.48
+    implicitHeight: modeLabel.implicitHeight +Style.spacing.rowPaddingX
 
     MouseArea {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
+      enabled: modeRow.enabled
       onEntered: root.focusRow(modeRow.rowName)
       onClicked: pods.setNoiseMode(modeRow.mode)
     }
@@ -486,9 +492,9 @@ Panel {
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
-      anchors.leftMargin: Style.space(10)
-      anchors.rightMargin: Style.space(10)
-      spacing: Style.space(8)
+      anchors.leftMargin:Style.space(10)
+      anchors.rightMargin:Style.space(10)
+      spacing:Style.space(8)
 
       Text {
         textFormat: Text.PlainText
@@ -498,7 +504,7 @@ Panel {
         color: root.foreground
         opacity: modeRow.selected ? 1.0 : 0.75
         font.family: root.fontFamily
-        font.pixelSize: Style.font.body
+        font.pixelSize:Style.font.body
         elide: Text.ElideRight
       }
 
@@ -508,13 +514,13 @@ Panel {
         text: Model.GLYPH_CHECK
         color: root.foreground
         font.family: root.fontFamily
-        font.pixelSize: Style.font.icon
+        font.pixelSize:Style.font.icon
         opacity: modeRow.selected ? 1.0 : 0.0
       }
     }
   }
 
-  component ToggleRow: CursorSurface {
+  component ToggleRow:  CursorSurface {
     id: toggleRow
     property string rowName: ""
     property string label: ""
@@ -525,12 +531,20 @@ Panel {
 
     hasCursor: root.rowHasCursor(rowName)
     foreground: root.foreground
-    implicitHeight: toggleContent.implicitHeight + Style.spacing.rowPaddingX
+    cursorOpacity: 0.12
+    radius: 6
+    readonly property string controlName: rowName === "ca"
+      ? "set-conversation-awareness"
+      : rowName === "onebud" ? "set-one-bud-anc" : ""
+    enabled: controlName === "" || pods.canControl(controlName)
+    opacity: enabled ? 1.0 : 0.48
+    implicitHeight: toggleContent.implicitHeight +Style.spacing.rowPaddingX
 
     MouseArea {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
+      enabled: toggleRow.enabled
       onEntered: root.focusRow(toggleRow.rowName)
       onClicked: toggleRow.toggled()
     }
@@ -539,14 +553,14 @@ Panel {
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
-      anchors.leftMargin: Style.space(10)
-      anchors.rightMargin: Style.space(10)
-      spacing: Style.space(8)
+      anchors.leftMargin:Style.space(10)
+      anchors.rightMargin:Style.space(10)
+      spacing:Style.space(8)
 
       ColumnLayout {
         id: toggleContent
         Layout.fillWidth: true
-        spacing: Style.space(1)
+        spacing:Style.space(1)
 
         Text {
           textFormat: Text.PlainText
@@ -554,7 +568,7 @@ Panel {
           text: toggleRow.label
           color: root.foreground
           font.family: root.fontFamily
-          font.pixelSize: Style.font.body
+          font.pixelSize:Style.font.body
           elide: Text.ElideRight
         }
 
@@ -564,7 +578,7 @@ Panel {
           text: toggleRow.caption
           color: root.dim
           font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
+          font.pixelSize:Style.font.caption
           elide: Text.ElideRight
         }
       }
@@ -573,14 +587,13 @@ Panel {
         Layout.alignment: Qt.AlignVCenter
         checked: toggleRow.checked
         busy: pods.busy
-        hasCursor: toggleRow.hasCursor
         foreground: root.foreground
         onToggled: toggleRow.toggled()
       }
     }
   }
 
-  component ValueRow: CursorSurface {
+  component ValueRow:  CursorSurface {
     id: valueRow
     property string rowName: ""
     property string label: ""
@@ -588,12 +601,17 @@ Panel {
 
     hasCursor: root.rowHasCursor(rowName)
     foreground: root.foreground
-    implicitHeight: valueLabel.implicitHeight + Style.spacing.rowPaddingX
+    cursorOpacity: 0.12
+    radius: 6
+    enabled: pods.canControl("set-ear-detection")
+    opacity: enabled ? 1.0 : 0.48
+    implicitHeight: valueLabel.implicitHeight +Style.spacing.rowPaddingX
 
     MouseArea {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
+      enabled: valueRow.enabled
       onEntered: root.focusRow(valueRow.rowName)
       onClicked: pods.cycleEarDetection()
     }
@@ -602,9 +620,9 @@ Panel {
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
-      anchors.leftMargin: Style.space(10)
-      anchors.rightMargin: Style.space(10)
-      spacing: Style.space(8)
+      anchors.leftMargin:Style.space(10)
+      anchors.rightMargin:Style.space(10)
+      spacing:Style.space(8)
 
       Text {
         textFormat: Text.PlainText
@@ -613,7 +631,7 @@ Panel {
         text: valueRow.label
         color: root.foreground
         font.family: root.fontFamily
-        font.pixelSize: Style.font.body
+        font.pixelSize:Style.font.body
         elide: Text.ElideRight
       }
 
@@ -622,7 +640,7 @@ Panel {
         text: valueRow.value
         color: root.dim
         font.family: root.fontFamily
-        font.pixelSize: Style.font.bodySmall
+        font.pixelSize:Style.font.bodySmall
         elide: Text.ElideRight
       }
     }
@@ -631,18 +649,20 @@ Panel {
   component SliderRow: Item {
     id: sliderRow
     implicitHeight: sliderColumn.implicitHeight
+    enabled: pods.canControl("set-adaptive-level")
+    opacity: enabled ? 1.0 : 0.48
 
     Column {
       id: sliderColumn
       anchors.left: parent.left
       anchors.right: parent.right
-      anchors.leftMargin: Style.space(10)
-      anchors.rightMargin: Style.space(10)
-      spacing: Style.space(4)
+      anchors.leftMargin:Style.space(10)
+      anchors.rightMargin:Style.space(10)
+      spacing:Style.space(4)
 
       Row {
         width: parent.width
-        spacing: Style.space(8)
+        spacing:Style.space(8)
 
         Text {
           textFormat: Text.PlainText
@@ -650,7 +670,7 @@ Panel {
           color: root.foreground
           opacity: 0.6
           font.family: root.fontFamily
-          font.pixelSize: Style.font.bodySmall
+          font.pixelSize:Style.font.bodySmall
         }
 
         Item {
@@ -663,19 +683,24 @@ Panel {
           text: pods.adaptiveNoiseLevel + "%"
           color: root.foreground
           font.family: root.fontFamily
-          font.pixelSize: Style.font.bodySmall
+          font.pixelSize:Style.font.bodySmall
         }
       }
 
       PanelSlider {
         width: parent.width
-        bar: root.bar
         minimum: 0
         maximum: 100
         step: root.adaptiveStepPercent
         integer: true
         tickCount: 5
         value: pods.adaptiveNoiseLevel
+        implicitHeight: 22
+        trackColor: "#354052"
+        fillColor: root.foreground
+        knobColor: root.foreground
+        tickColor: "#151820"
+        knobSize: 14
         onReleased: function (v) { pods.setAdaptiveNoiseLevel(v) }
       }
     }

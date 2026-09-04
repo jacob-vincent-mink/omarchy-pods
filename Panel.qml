@@ -21,9 +21,9 @@ Presentation.Panel {
   property bool cursorActive: false
 
   readonly property bool hideWhenDisconnected: setting("hideWhenDisconnected", true) === true
-  readonly property color foreground: "#e7e9ee"
-  readonly property color urgent: "#ef7d8b"
-  readonly property color dim: Qt.darker(foreground, 1.55)
+  readonly property color foreground: Color.popups.text
+  readonly property color urgent: Color.urgent
+  readonly property color dim: Color.alpha(foreground, 0.55)
   readonly property string fontFamily:Style.font.family
   // Say nothing extra once a section already explains the state.
   readonly property bool guidanceVisible: !pods.hasAirPods && !pods.hasBattery && !pods.schemaUnsupported
@@ -138,7 +138,7 @@ Presentation.Panel {
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth( Style.space(380))
     contentHeight: panel.fittedContentHeight(column.implicitHeight,Style.space(560))
-    color: "#151820"
+    color: Color.popups.background
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -696,10 +696,10 @@ Presentation.Panel {
         tickCount: 5
         value: pods.adaptiveNoiseLevel
         implicitHeight: 22
-        trackColor: "#354052"
+        trackColor: Color.alpha(root.foreground, 0.22)
         fillColor: root.foreground
         knobColor: root.foreground
-        tickColor: "#151820"
+        tickColor: Color.popups.background
         knobSize: 14
         onReleased: function (v) { pods.setAdaptiveNoiseLevel(v) }
       }

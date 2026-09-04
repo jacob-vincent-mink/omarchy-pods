@@ -221,6 +221,10 @@ public:
     }
 
     bool areAirpodsConnected() const { return socket && socket->isOpen() && socket->state() == QBluetoothSocket::SocketState::ConnectedState; }
+    QString connectedDeviceAddress() const
+    {
+        return areAirpodsConnected() ? socket->peerAddress().toString().toUpper() : QString();
+    }
     int earDetectionBehavior() const { return mediaController->getEarDetectionBehavior(); }
     bool crossDeviceEnabled() const { return CrossDevice.isEnabled; }
     AutoStartManager *autoStartManager() const { return m_autoStartManager; }
@@ -1704,6 +1708,7 @@ public:
         QJsonObject status;
         status.insert("schema_version", 1);
         status.insert("connected", areAirpodsConnected());
+        status.insert("device_address", connectedDeviceAddress());
         status.insert("device_name", d ? d->deviceName() : QString());
         status.insert("noise_mode", d ? d->noiseControlModeInt() : -1);
         if (b) {
@@ -2061,7 +2066,20 @@ int main(int argc, char *argv[]) {
 
         QObject::connect(clientSocket, &QLocalSocket::readyRead,
                          clientSocket, [clientSocket, enginePtr, trayAppPtr]() {
-            QString msg = clientSocket->readAll();
+            const QByteArray request = clientSocket->readAll();
+            QString msg = QString::fromUtf8(request);
+            const bool brokerRequest = msg.trimmed().startsWith(u'{');
+            if (brokerRequest) {
+                const auto command = OpenPods::Ipc::parseBrokerControl(
+                    request, trayAppPtr->connectedDeviceAddress());
+                if (!command) {
+                    clientSocket->write("{\"ok\":false}\n");
+                    clientSocket->flush();
+                    clientSocket->disconnectFromServer();
+                    return;
+                }
+                msg = *command;
+            }
             if (msg == "reopen") {
                 trayAppPtr->incReopenCallsTotal();
                 // A headless daemon has no window, and the caller deserves an answer rather than silence.
@@ -2137,6 +2155,10 @@ int main(int argc, char *argv[]) {
                 clientSocket->flush();
             } else {
                 LOG_ERROR("Unknown message received: " << msg);
+            }
+            if (brokerRequest) {
+                clientSocket->write("{\"ok\":true}\n");
+                clientSocket->flush();
             }
             clientSocket->disconnectFromServer();
         });

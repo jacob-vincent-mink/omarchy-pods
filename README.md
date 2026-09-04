@@ -93,15 +93,9 @@ anyway. It works because the panel reads that file and nothing else.
 
 ## How it works
 
-The plugin does not poll. The daemon writes its status to
-`$XDG_STATE_HOME/librepods/status.json` whenever that status changes, and
-removes the file when it stops. The panel watches it, so an idle desktop runs no
-processes at all on its behalf. `librepods-ctl` is used only when you actually
-change something.
+The secure plugin asks Omarchy's selected-device provider for a bounded status snapshot. The trusted provider reads BlueZ and this plugin's owner-only daemon socket, verifies that both identify the same enrolled device, and removes the Bluetooth address before returning status to sandboxed QML. Observation is currently refreshed every five seconds; controls are brokered only after a fresh physical gesture.
 
-The plugin never talks to Bluetooth itself. If `librepods-ctl` is missing or
-the daemon is not running, the panel says so in one line instead of drawing an
-empty surface.
+The plugin never talks to Bluetooth, the daemon socket, or the host filesystem itself. If the selected-device provider or daemon is unavailable, the panel says so in one line instead of drawing an empty surface. The daemon continues to publish `$XDG_STATE_HOME/librepods/status.json` for non-plugin consumers.
 
 ### The output codec, and what the microphone costs
 

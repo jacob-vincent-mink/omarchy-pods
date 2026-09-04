@@ -4,10 +4,9 @@ import Omarchy.PluginPresentation 1.0
 Rectangle {
   id: root
 
-  width: 44
-  height: 32
-  radius: 8
-  color: Color.alpha(Color.background, pressArea.pressed ? 0.86 : 0.58)
+  implicitWidth: Style.bar.statusSlot
+  implicitHeight: Style.bar.size
+  color: "transparent"
   property var inputRegions: [{x: 0, y: 0, width: width, height: height}]
   readonly property bool acceptsKeyboardFocus: false
   readonly property int maximumFramesPerSecond: 15
@@ -24,8 +23,8 @@ Rectangle {
   AirPodsIcon {
     anchors.centerIn: parent
     // Preserve the upstream bar mark size.
-    iconSize: Style.space(13)
-    color: pods.hasAirPods ? "#f4f4f5" : "#737986"
+    iconSize: Style.font.icon
+    color: pods.hasAirPods ? Color.bar.text : Color.alpha(Color.bar.text, 0.45)
     variant: pods.isHeadset ? "max" : pods.isProSeries ? "pro" : "buds"
   }
 

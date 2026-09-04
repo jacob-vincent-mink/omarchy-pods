@@ -7,7 +7,7 @@ Rectangle {
   width: 44
   height: 32
   radius: 8
-  color: pressArea.pressed ? "#343a47" : "transparent"
+  color: Color.alpha(Color.background, pressArea.pressed ? 0.86 : 0.58)
   property var inputRegions: [{x: 0, y: 0, width: width, height: height}]
   readonly property bool acceptsKeyboardFocus: false
   readonly property int maximumFramesPerSecond: 15

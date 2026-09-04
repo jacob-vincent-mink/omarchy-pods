@@ -35,12 +35,10 @@ Item {
         y: (root.iconSize - root.ink[3] * root.fit) / 2
       }
     ]
-    // The curve renderer is what keeps the stems smooth once the glyph is under a pixel wide.
+    // The curve renderer keeps the stems smooth without an offscreen layer.
+    // Qt Quick's software backend (used inside the secure worker) does not
+    // preserve that layer's transparent texture reliably.
     preferredRendererType: Shape.CurveRenderer
-    // Sampled down from three times the painted size, or Apple's sub-pixel hairlines break into dashes.
-    layer.enabled: true
-    layer.smooth: true
-    layer.textureSize: Qt.size(width * root.fit * 3, height * root.fit * 3)
 
     ShapePath {
       fillColor: root.color

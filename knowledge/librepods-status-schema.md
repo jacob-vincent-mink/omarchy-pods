@@ -35,6 +35,7 @@ does not use it, and runs `librepods-ctl` only for the control verbs below.
 |---|---|---|
 | `schema_version` | int | currently 1, gates incompatible bumps |
 | `connected` | bool | the L2CAP audio link, not whether the daemon is up |
+| `device_address` | string | the connected device's canonical Bluetooth address; empty while disconnected; used only by the trusted selected-device provider to bind controls to the enrolled BlueZ object |
 | `device_name` | string | the BlueZ alias |
 | `noise_mode` | int | 0 Off, 1 Noise Cancellation, 2 Transparency, 3 Adaptive, -1 unknown |
 | `left`, `right` | object | `{available, level, charging, in_ear}` |
@@ -55,9 +56,7 @@ The line arrives with **keys sorted alphabetically**, not in the daemon's insert
 order, because `QJsonObject` sorts. Anything reading the line positionally, or a
 sample-input comment written from the insert calls, will be wrong.
 
-Thirteen `*_total` counters also appear, along with `model_int` and
-`model_number`. They are daemon telemetry and identity, not panel data, and
-nothing in the plugin reads them.
+Thirteen `*_total` counters also appear, along with `model_int`, `model_number`, and `device_address`. They are daemon telemetry and trusted-provider identity, not panel data, and nothing in sandboxed QML reads them. The state directory and socket remain owner-only; the selected-device provider removes the address before returning its bounded observation.
 
 # Capability keys are additive, and absence is not false
 

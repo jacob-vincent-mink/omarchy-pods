@@ -104,6 +104,35 @@ private slots:
                                                QStringLiteral("adaptive:"));
         QVERIFY(!out.has_value());
     }
+
+    void exactBrokerControl_parses()
+    {
+        const auto out = OpenPods::Ipc::parseBrokerControl(
+            R"({"schema_version":1,"device_address":"02:00:00:00:00:01","command":"noise:anc"})",
+            u"02:00:00:00:00:01");
+        QCOMPARE(out.value_or(QString()), QStringLiteral("noise:anc"));
+    }
+
+    void wrongBrokerDevice_returnsNullopt()
+    {
+        QVERIFY(!OpenPods::Ipc::parseBrokerControl(
+            R"({"schema_version":1,"device_address":"02:00:00:00:00:02","command":"noise:anc"})",
+            u"02:00:00:00:00:01").has_value());
+    }
+
+    void dangerousBrokerVerb_returnsNullopt()
+    {
+        QVERIFY(!OpenPods::Ipc::parseBrokerControl(
+            R"({"schema_version":1,"device_address":"02:00:00:00:00:01","command":"forget"})",
+            u"02:00:00:00:00:01").has_value());
+    }
+
+    void extraBrokerField_returnsNullopt()
+    {
+        QVERIFY(!OpenPods::Ipc::parseBrokerControl(
+            R"({"schema_version":1,"device_address":"02:00:00:00:00:01","command":"noise:anc","extra":true})",
+            u"02:00:00:00:00:01").has_value());
+    }
 };
 
 QTEST_APPLESS_MAIN(TestIpcVerb)

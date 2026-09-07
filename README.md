@@ -1,5 +1,7 @@
 <h1 align="center">AirPods for Omarchy</h1>
 
+> Experimental schema-v2 migration for [Omarchy PR #8956](https://github.com/omacom/omarchy/pull/8956), not a schema-v1 installation update. Requires the opt-in runtime plus a separately trusted selected-device provider implementing the manifest's exact contracts. The current runtime package does not supply that provider, so activation is blocked without it. Hardware behavior and the provider-to-daemon path are not verified by this PR. Existing screenshots show the original plugin.
+
 <p align="center">
   Battery for each pod and the case, the listening modes, adaptive noise level, Conversation Awareness, One-Bud ANC and ear detection, drawn in Omarchy's own panel idiom.
 </p>
@@ -93,15 +95,9 @@ anyway. It works because the panel reads that file and nothing else.
 
 ## How it works
 
-The plugin does not poll. The daemon writes its status to
-`$XDG_STATE_HOME/librepods/status.json` whenever that status changes, and
-removes the file when it stops. The panel watches it, so an idle desktop runs no
-processes at all on its behalf. `librepods-ctl` is used only when you actually
-change something.
+The secure plugin asks Omarchy's selected-device provider for a bounded status snapshot. The trusted provider reads BlueZ and this plugin's owner-only daemon socket, verifies that both identify the same enrolled device, and removes the Bluetooth address before returning status to sandboxed QML. Observation is currently refreshed every five seconds; controls are brokered only after a fresh physical gesture.
 
-The plugin never talks to Bluetooth itself. If `librepods-ctl` is missing or
-the daemon is not running, the panel says so in one line instead of drawing an
-empty surface.
+The plugin never talks to Bluetooth, the daemon socket, or the host filesystem itself. If the selected-device provider or daemon is unavailable, the panel says so in one line instead of drawing an empty surface. The daemon continues to publish `$XDG_STATE_HOME/librepods/status.json` for non-plugin consumers.
 
 ### The output codec, and what the microphone costs
 

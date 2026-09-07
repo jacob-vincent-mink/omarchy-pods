@@ -3,7 +3,7 @@
 
 const source = Deno.readTextFileSync(new URL("../Model.js", import.meta.url))
 const Model = new Function(
-  source + "; return { parseStatus, podFrom, defaultPod, noiseModeVerb, earDetectionVerb, levelFraction, levelText, podMeta, elideError, availableModes, NOISE_OFF, NOISE_ANC, NOISE_TRANSPARENCY, NOISE_ADAPTIVE, LEVEL_UNKNOWN, NOISE_UNKNOWN, EAR_PAUSE_ONE_OUT, LID_UNKNOWN, MAX_ERROR_CHARS }"
+  source + "; return { parseStatus, parseDeviceObservation, podFrom, defaultPod, noiseModeVerb, earDetectionVerb, levelFraction, levelText, podMeta, elideError, availableModes, NOISE_OFF, NOISE_ANC, NOISE_TRANSPARENCY, NOISE_ADAPTIVE, LEVEL_UNKNOWN, NOISE_UNKNOWN, EAR_PAUSE_ONE_OUT, EAR_PAUSE_BOTH_OUT, LID_UNKNOWN, MAX_ERROR_CHARS }"
 )()
 
 let failures = 0
@@ -136,6 +136,36 @@ check("a Pro 3 loses Off and keeps Adaptive", modesFor(good),
   [Model.NOISE_TRANSPARENCY, Model.NOISE_ADAPTIVE, Model.NOISE_ANC])
 check("a Max 2 gets all four", modesFor(max2),
   [Model.NOISE_OFF, Model.NOISE_TRANSPARENCY, Model.NOISE_ADAPTIVE, Model.NOISE_ANC])
+
+const projected = Model.parseDeviceObservation(JSON.stringify({
+  ok: true,
+  connected: true,
+  deviceName: "GM’s AirPods Pro",
+  modelName: "AirPods Pro 3",
+  isProSeries: true,
+  isHeadset: false,
+  supportsNoiseOff: false,
+  supportedControls: ["set-listening-mode", "set-adaptive-level", "set-conversation-awareness", "set-one-bud-anc", "set-ear-detection"],
+  mode: "adaptive",
+  adaptiveLevel: 45,
+  conversationAwareness: true,
+  oneBudAnc: true,
+  earDetection: "pause-both-out",
+  lidState: 1,
+  left: {available: true, level: 79, charging: false, inEar: true},
+  right: {available: false},
+  caseBattery: {available: true, level: 100, charging: true},
+  headset: {available: false}
+}))
+check("selected-device projection parses", projected.ok, true)
+check("selected-device controls derive hardware support", projected.supportsAdaptive, true)
+check("selected-device mode maps to the panel model", projected.noiseMode, Model.NOISE_ADAPTIVE)
+check("selected-device pod projection preserves bounded state", projected.left,
+  {level: 79, charging: false, inEar: true})
+check("selected-device absent pod remains unknown", projected.right.level, Model.LEVEL_UNKNOWN)
+check("selected-device ear behavior maps to the panel model", projected.earDetectionBehavior, Model.EAR_PAUSE_BOTH_OUT)
+check("malformed selected-device response fails closed",
+  Model.parseDeviceObservation('{"ok":true,"connected":true}').ok, false)
 
 if (failures > 0) {
   console.log(failures + " failed")

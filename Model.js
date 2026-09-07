@@ -160,6 +160,59 @@ function parseStatus(raw) {
   return status
 }
 
+function parseDeviceObservation(raw) {
+  var output = defaultStatus()
+  var parsed
+  try {
+    parsed = JSON.parse(String(raw || ""))
+  } catch (e) {
+    output.lastError = "Could not read the selected-device response"
+    return output
+  }
+  if (!parsed || parsed.ok !== true || typeof parsed.connected !== "boolean"
+      || !Array.isArray(parsed.supportedControls)) {
+    output.lastError = "The selected-device provider returned an invalid response"
+    return output
+  }
+  function projectedPod(value) {
+    if (!value || value.available !== true) return defaultPod()
+    return {
+      level: intOr(value.level, LEVEL_UNKNOWN),
+      charging: value.charging === true,
+      inEar: value.inEar === true
+    }
+  }
+  var modes = {off: NOISE_OFF, anc: NOISE_ANC,
+               transparency: NOISE_TRANSPARENCY, adaptive: NOISE_ADAPTIVE}
+  var ears = {"pause-one-out": EAR_PAUSE_ONE_OUT,
+              "pause-both-out": EAR_PAUSE_BOTH_OUT, disabled: EAR_DISABLED}
+  output.ok = true
+  output.connected = parsed.connected
+  output.deviceName = String(parsed.deviceName || "")
+  output.modelName = String(parsed.modelName || "")
+  output.isProSeries = parsed.isProSeries === true
+  output.isHeadset = parsed.isHeadset === true
+  output.supportsNoiseOff = parsed.supportsNoiseOff !== false
+  output.supportsNoiseControl = parsed.supportedControls.indexOf("set-listening-mode") >= 0
+  output.supportsAdaptive = parsed.supportedControls.indexOf("set-adaptive-level") >= 0
+  output.supportsConversationalAwareness = parsed.supportedControls.indexOf("set-conversation-awareness") >= 0
+  output.supportsOneBudANC = parsed.supportedControls.indexOf("set-one-bud-anc") >= 0
+  output.noiseMode = modes[parsed.mode] === undefined ? NOISE_UNKNOWN : modes[parsed.mode]
+  output.adaptiveNoiseLevel = Math.max(0, Math.min(100, intOr(parsed.adaptiveLevel, 0)))
+  output.oneBudANC = parsed.oneBudAnc === true
+  output.conversationalAwareness = parsed.conversationAwareness === true
+  output.earDetectionBehavior = ears[parsed.earDetection] === undefined
+    ? EAR_PAUSE_ONE_OUT : ears[parsed.earDetection]
+  output.lidState = Math.max(LID_OPEN, Math.min(LID_UNKNOWN, intOr(parsed.lidState, LID_UNKNOWN)))
+  output.left = projectedPod(parsed.left)
+  output.right = projectedPod(parsed.right)
+  var casePod = projectedPod(parsed.caseBattery)
+  output.caseBattery = {level: casePod.level, charging: casePod.charging}
+  var headset = projectedPod(parsed.headset)
+  output.headset = {level: headset.level, charging: headset.charging}
+  return output
+}
+
 // The one list both the cycle and the panel rows are built from, in the order the panel draws them.
 function availableModes(hasNoiseControl, hasOff, hasAdaptive) {
   // AirPods 1, 2, 3 and the plain AirPods 4 have no listening modes at all.

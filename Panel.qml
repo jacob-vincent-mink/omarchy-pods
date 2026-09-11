@@ -9,6 +9,7 @@ import "Model.js" as Model
 
 Panel {
   id: root
+  required property var runtime
   moduleName: "io.github.thisisgm.omapods"
   ipcTarget: "omapods"
   manageIpc: false
@@ -118,7 +119,7 @@ Panel {
 
   Service {
     id: pods
-    settings: root.settings
+    runtime: root.runtime
   }
 
   IpcHandler {
@@ -208,6 +209,7 @@ Panel {
             width: parent.width
             title: pods.modelName !== "" ? pods.modelName : (pods.deviceName !== "" ? pods.deviceName : "AirPods")
             meta: pods.hasAirPods ? root.heroPhraseText
+              : !pods.statusAllowed ? "Status access not approved"
               : pods.schemaUnsupported ? "Unsupported status schema"
               : pods.daemonReachable ? "Not connected"
               : "librepods is not running"
@@ -359,7 +361,9 @@ Panel {
             textFormat: Text.PlainText
             visible: root.guidanceVisible
             width: parent.width
-            text: pods.daemonReachable
+            text: !pods.statusAllowed
+              ? "Allow the librepods status folder in the plugin review."
+              : pods.daemonReachable
               ? "Open the case or connect your AirPods to see battery and listening controls."
               : "Start the librepods daemon to see battery and listening controls."
             color: root.dim

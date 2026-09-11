@@ -19,8 +19,7 @@
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
-      "hideWhenDisconnected": true,
-      "ctlPath": ""
+      "hideWhenDisconnected": true
     },
     "schema": [
       {
@@ -28,14 +27,28 @@
         "type": "boolean",
         "label": "Hide the icon when no AirPods are connected",
         "defaultValue": true
-      },
-      {
-        "key": "ctlPath",
-        "type": "path",
-        "label": "Path to librepods-ctl",
-        "description": "Leave empty to find librepods-ctl on PATH.",
-        "defaultValue": ""
       }
     ]
+  },
+  "sandbox": {
+    "version": 1,
+    "requests": {
+      "settings": { "read": ["hideWhenDisconnected"] },
+      "filesystem": [{ "name": "status", "path": "$XDG_STATE_HOME/librepods", "target": "directory", "access": "read", "required": true }],
+      "exec": {
+        "controls": {
+          "executable": "/usr/local/bin/librepods-ctl",
+          "tree": {
+            "next": [
+              { "arg": { "kind": "oneOf", "values": ["noise:off", "noise:anc", "noise:transparency", "noise:adaptive"] }, "then": { "end": "noise-mode" } },
+              { "arg": { "kind": "pattern", "value": "adaptive:(0|[1-9][0-9]?|100)", "max": 12 }, "then": { "end": "adaptive-level" } },
+              { "arg": { "kind": "oneOf", "values": ["ca:on", "ca:off"] }, "then": { "end": "conversation-awareness" } },
+              { "arg": { "kind": "oneOf", "values": ["onebud:on", "onebud:off"] }, "then": { "end": "one-bud-anc" } },
+              { "arg": { "kind": "oneOf", "values": ["ear:one", "ear:both", "ear:off"] }, "then": { "end": "ear-detection" } }
+            ]
+          }
+        }
+      }
+    }
   }
 }

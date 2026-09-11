@@ -6,7 +6,9 @@ import "Model.js" as Model
 Item {
   id: root
 
-  property var settings: ({})
+  required property var runtime
+  property var commandJob: null
+  readonly property bool statusAllowed: !!runtime.grants.filesystem.status
 
   property bool daemonReachable: false
   property bool connected: false
@@ -33,11 +35,9 @@ Item {
   property string lastError: ""
   property string actionStatus: ""
 
-  readonly property string ctlPath: String(setting("ctlPath", "") || "librepods-ctl")
-  readonly property bool busy: commandProcess.running
+  readonly property bool busy: commandJob !== null
   // The daemon publishes here on change, so there is nothing to poll.
-  readonly property string statePath: (Quickshell.env("XDG_STATE_HOME")
-    || Quickshell.env("HOME") + "/.local/state") + "/librepods/status.json"
+  readonly property string statePath: statusAllowed ? runtime.filesystemPath("status") + "/status.json" : ""
   readonly property bool hasAirPods: daemonReachable && connected
   // Battery keeps arriving over BLE while the audio link is down, so it is not gated on connected.
   readonly property bool hasBattery: daemonReachable
@@ -59,11 +59,6 @@ Item {
   // Single slot: a verb sent while another is in flight replaces the queued one
   // rather than being dropped, which is what arrow-key repeat produces.
   property var _queued: null
-
-  function setting(name, fallback) {
-    var value = settings ? settings[name] : undefined
-    return value === undefined || value === null ? fallback : value
-  }
 
   function refresh() {
     stateFile.reload()
@@ -134,7 +129,7 @@ Item {
 
   function _send(verb, field, optimistic) {
     if (verb === "") return
-    if (commandProcess.running) {
+    if (commandJob !== null) {
       _queued = { verb: verb, field: field, optimistic: optimistic }
       _pendingField = field
       _pendingValue = optimistic
@@ -146,8 +141,7 @@ Item {
     _pendingValue = optimistic
     root[field] = optimistic
     settleTimer.restart()
-    commandProcess.command = [ctlPath, verb]
-    commandProcess.running = true
+    commandJob = runtime.exec("controls", [verb], {onFinished: finishCommand})
   }
 
   // Guards the keyboard and the bar's right click too, not just the panel rows.
@@ -217,26 +211,21 @@ Item {
     onLoadFailed: root.stateGone()
   }
 
-  Process {
-    id: commandProcess
-    running: false
-    command: []
-    stderr: StdioCollector { id: commandErr; waitForEnd: true }
-    onExited: function (exitCode) {
-      if (exitCode !== 0) {
-        // Clearing the hold also stops the timer that would have re-read, so do it here.
-        root._clearPending()
-        root.refresh()
-        root._queued = null
-        // Its own field with its own timer, or the next status read wipes it unread.
-        root.actionStatus = Model.elideError(commandErr.text || "librepods-ctl rejected the command")
-        actionStatusTimer.restart()
-      }
-      if (root._queued) {
-        var next = root._queued
-        root._queued = null
-        root._send(next.verb, next.field, next.optimistic)
-      }
+  function finishCommand(result) {
+    commandJob = null
+    if (result.status !== "completed" || result.exitCode !== 0) {
+      // Clearing the hold also stops the timer that would have re-read, so do it here.
+      root._clearPending()
+      root.refresh()
+      root._queued = null
+      // Its own field with its own timer, or the next status read wipes it unread.
+      root.actionStatus = Model.elideError((typeof result.stderr === "string" ? result.stderr : "") || "librepods-ctl command failed: " + result.status)
+      actionStatusTimer.restart()
+    }
+    if (root._queued) {
+      var next = root._queued
+      root._queued = null
+      root._send(next.verb, next.field, next.optimistic)
     }
   }
 }

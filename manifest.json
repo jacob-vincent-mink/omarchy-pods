@@ -34,7 +34,7 @@
     "version": 1,
     "requests": {
       "settings": { "read": ["hideWhenDisconnected"] },
-      "filesystem": [{ "name": "status", "access": "read" }],
+      "filesystem": [{ "name": "status", "path": "$XDG_STATE_HOME/librepods", "target": "directory", "access": "read", "required": true }],
       "exec": {
         "controls": {
           "executable": "/usr/local/bin/librepods-ctl",

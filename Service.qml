@@ -1,12 +1,14 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.Plugin as Plugin
 import "Model.js" as Model
 
 Item {
   id: root
 
-  property bool statusAllowed: false
+  property var runtime: null
+  readonly property bool statusAllowed: !!runtime?.grants?.filesystem?.status
 
   property bool daemonReachable: false
   property bool connected: false
@@ -35,7 +37,7 @@ Item {
 
   readonly property bool busy: commandProcess.running
   // The daemon publishes here on change, so there is nothing to poll.
-  readonly property string statePath: statusAllowed ? "/grants/status/status.json" : ""
+  readonly property string statePath: statusAllowed ? runtime.filesystemPath("status") + "/status.json" : ""
   readonly property bool hasAirPods: daemonReachable && connected
   // Battery keeps arriving over BLE while the audio link is down, so it is not gated on connected.
   readonly property bool hasBattery: daemonReachable
@@ -139,7 +141,7 @@ Item {
     _pendingValue = optimistic
     root[field] = optimistic
     settleTimer.restart()
-    commandProcess.command = ["/bootstrap", "--exec", "controls", verb]
+    commandProcess.command = ["librepods-ctl", verb]
     commandProcess.running = true
   }
 
@@ -200,19 +202,6 @@ Item {
   }
 
   FileView {
-    path: "/run/plugin/grants.json"
-    printErrors: false
-    onLoaded: {
-      // {"filesystem":{"status":{"access":"read"}},"exec":{...}}
-      try {
-        var grants = JSON.parse(text())
-        root.statusAllowed = !!(grants.filesystem && grants.filesystem.status)
-      } catch (error) { root.statusAllowed = false }
-    }
-    onLoadFailed: root.statusAllowed = false
-  }
-
-  FileView {
     id: stateFile
     path: root.statePath
     watchChanges: true
@@ -223,8 +212,9 @@ Item {
     onLoadFailed: root.stateGone()
   }
 
-  Process {
+  Plugin.Process {
     id: commandProcess
+    runtime: root.runtime
     running: false
     command: []
     stderr: StdioCollector { id: commandErr; waitForEnd: true }

@@ -118,6 +118,7 @@ Panel {
 
   Service {
     id: pods
+    runtime: root.bar?.shell?.runtime || null
   }
 
   IpcHandler {

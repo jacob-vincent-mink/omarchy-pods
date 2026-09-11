@@ -4,11 +4,11 @@ This branch targets `jacob-vincent-mink/omarchy-pods:main`. The original daemon,
 
 ## Portable runtime
 
-The same plugin revision can now run in Ward or explicit YOLO with Omarchy's shared runtime. The panel passes `bar.shell.runtime` to the service. `runtime.filesystemPath("status")` resolves the selected Ward mount or declared host directory; `qs.Plugin.Process` keeps the original `librepods-ctl` command through Omarchy's declared-command adapter. The plugin no longer parses Ward's private grants file or hardcodes `/bootstrap` and `/grants` paths.
+The widget declares `required property var runtime` and passes the initialized runtime through its panel to the nested service. `runtime.filesystemPath("status")` resolves the admitted read-only mount. `runtime.exec("controls", [command])` names the manifest resource and returns a structured job result. The plugin no longer parses Ward's private grants file or hardcodes `/bootstrap` and `/grants` paths.
 
-YOLO trusts arbitrary same-account code and does not enforce Ward's selected command leaves. Installation provenance, not a downloaded manifest, selects this mode. The daemon and its Bluetooth/audio profile behavior are unchanged.
+Normal mode and explicit YOLO both run this sandbox-native plugin in Ward using the same broker. YOLO approves every declared supported permission and control leaf but still enforces the command tree. Only legacy plugins without a sandbox declaration retain the explicitly trusted in-process YOLO path. The daemon and its Bluetooth/audio profile behavior are unchanged.
 
-Production-code churn relative to original `main` falls from 32 to 25 changed lines compared with the prior Ward-only port (additions plus deletions; manifest, documentation and tests excluded). Fresh external private-display trials installed, enabled and opened this revision in both modes using disposable status data. Both displayed the same schema error for incomplete data and matching connected-earbud panels with synthetic 79%, 93% and 100% batteries for valid data. YOLO also saved its own display preference through the real shell IPC. This is current runtime/render evidence, not physical hardware control verification or a rerun of the earlier control matrix below.
+The matching host API is still unpublished, so this branch requires the current local required-runtime implementation in addition to the Omarchy sandbox PR. Fresh external private-display trials installed, enabled and opened this revision in both modes using disposable connected-earbud status with synthetic 79%, 93% and 100% batteries. These are current startup/render checks, not physical hardware control verification or a rerun of the earlier control matrix below. The live rehearsal's real AirPods remained disconnected; no physical control success is claimed.
 
 ## Setup and review
 
@@ -34,7 +34,9 @@ The panel requests no network, Bluetooth socket, host session bus, media socket,
 
 Denying required status access prevents activation. A declined optional control uses the original bounded action-error display and clears the optimistic change. Hardware-dependent verification must distinguish a disconnected or unsupported device from a denied operation.
 
-## Verification
+## Historical verification
+
+The following observations predate the required-runtime API above and describe those earlier revisions, including their runtime limitations.
 
 The original daemon's 19 tests and the plugin's model checks passed during the earlier port trials. A temporary external trial ran the actual panel and service in Ward with synthetic status and the installed control executable pointed at a private daemon socket. It verified all five control families, denied access and forbidden arguments, read-only status, atomic replacement, file removal and recovery, unsupported schema feedback, keyboard noise selection, cursor navigation and Escape. Connected earbuds, headset battery and declined-status panels were rendered and inspected. Those trials used the earlier user-selected-path contract; they are not validation of this revision's declarative path and required-status admission.
 

@@ -9,6 +9,7 @@ import "Model.js" as Model
 
 Panel {
   id: root
+  required property var runtime
   moduleName: "io.github.thisisgm.omapods"
   ipcTarget: "omapods"
   manageIpc: false
@@ -118,7 +119,7 @@ Panel {
 
   Service {
     id: pods
-    runtime: root.bar?.shell?.runtime || null
+    runtime: root.runtime
   }
 
   IpcHandler {

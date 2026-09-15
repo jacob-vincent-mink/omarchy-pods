@@ -1,6 +1,5 @@
 import QtQuick
-import Quickshell
-import Quickshell.Io
+import QtQml as Qml
 import "Model.js" as Model
 
 Item {
@@ -19,6 +18,7 @@ Item {
   property bool supportsAdaptive: false
   property bool supportsConversationalAwareness: false
   property bool supportsOneBudANC: false
+  property var supportedControls: []
   property int noiseMode: Model.NOISE_UNKNOWN
   property int adaptiveNoiseLevel: 0
   property bool oneBudANC: false
@@ -33,11 +33,24 @@ Item {
   property string lastError: ""
   property string actionStatus: ""
 
-  readonly property string ctlPath: String(setting("ctlPath", "") || "librepods-ctl")
-  readonly property bool busy: commandProcess.running
-  // The daemon publishes here on change, so there is nothing to poll.
-  readonly property string statePath: (Quickshell.env("XDG_STATE_HOME")
-    || Quickshell.env("HOME") + "/.local/state") + "/librepods/status.json"
+  readonly property bool busy: controlCalls.length > 0
+  readonly property var declaredControls: [
+    "set-listening-mode",
+    "set-adaptive-level",
+    "set-conversation-awareness",
+    "set-one-bud-anc",
+    "set-ear-detection"
+  ]
+  readonly property bool controlPermissionGranted: {
+    return runtime.hasPermission("device.control", "control")
+  }
+  readonly property string controlPermissionState:
+    runtime.permissionState("device.control", "control")
+  readonly property string controlPermissionMessage:
+    controlPermissionState === "granted" ? "Device controls allowed"
+      : controlPermissionState === "unavailable" ? "Status only — control provider unavailable"
+      : controlPermissionState === "revoked" ? "Status only — controls revoked"
+      : "Status only — controls not granted"
   readonly property bool hasAirPods: daemonReachable && connected
   // Battery keeps arriving over BLE while the audio link is down, so it is not gated on connected.
   readonly property bool hasBattery: daemonReachable
@@ -50,32 +63,65 @@ Item {
   // How long an optimistic value is held before the daemon's own state wins.
   readonly property int settleHoldMs: 4000
   readonly property int actionStatusMs: 2200
+  readonly property int observationIntervalMs: 5000
 
   // Held over incoming reads until the daemon agrees, so a write already in flight
   // when the click landed cannot snap the control back.
-  property string _pendingField: ""
-  property var _pendingValue: null
+  property var _pendingValues: ({})
+  property var _latestControls: ({})
+  property int _controlSerial: 0
 
-  // Single slot: a verb sent while another is in flight replaces the queued one
-  // rather than being dropped, which is what arrow-key repeat produces.
-  property var _queued: null
+  property var observeCall: null
+  property var controlCalls: []
+  property double observeCorrelation: 0
+  property bool observationInFlight: false
 
   function setting(name, fallback) {
     var value = settings ? settings[name] : undefined
     return value === undefined || value === null ? fallback : value
   }
 
-  function refresh() {
-    stateFile.reload()
+  function canControl(name) {
+    return controlPermissionGranted
+      && declaredControls.indexOf(name) >= 0
+      && supportedControls.indexOf(name) >= 0
   }
 
-  function applyLine(raw) {
-    var status = Model.parseStatus(raw)
+  function brokerError(error) {
+    var value = String(error || "")
+    if (value.indexOf("permission") >= 0 || value.indexOf("denied") >= 0)
+      return "Permission denied"
+    if (value.indexOf("unavailable") >= 0)
+      return "No selected audio device is available"
+    return Model.elideError(value || "The device provider did not respond")
+  }
+
+  function refresh() {
+    if (observationInFlight) return false
+    observationInFlight = true
+    observeCall = runtime.invoke("device.observe", "observe", {
+      demandScope: '{"fields":["identity","connection","battery","supported-controls","listening-mode","adaptive-level","conversation-awareness","one-bud-anc","ear-detection","case-lid"],"resourceClass":"paired-audio-device","selection":"user-selected"}',
+      payload: {fields: ["identity", "connection", "battery", "supported-controls", "listening-mode", "adaptive-level", "conversation-awareness", "one-bud-anc", "ear-detection", "case-lid"]}
+    })
+    observeCorrelation = observeCall ? observeCall.correlation : 0
+    if (observeCall && observeCall.finished) finishObserve(observeCall)
+    return true
+  }
+
+  function finishObserve(call) {
+    if (!observationInFlight || !call || call !== observeCall) return
+    observationInFlight = false
+    observeCall = null
+    observeCorrelation = 0
+    if (!call.ok) { stateGone(); lastError = brokerError(call.error); return }
+    applyObservation(call.utf8Text)
+  }
+
+  function applyObservation(raw) {
+    var status = Model.parseDeviceObservation(raw)
     if (!status.ok) {
-      // A line we cannot read still proves the daemon is running and writing.
-      daemonReachable = true
+      daemonReachable = false
       connected = false
-      schemaUnsupported = status.schemaTooNew
       lastError = status.lastError
       return
     }
@@ -85,7 +131,6 @@ Item {
     applyStatus(status)
   }
 
-  // The daemon removes the file when it stops, so an absent file is a stopped daemon.
   function stateGone() {
     daemonReachable = false
     connected = false
@@ -104,6 +149,12 @@ Item {
     supportsAdaptive = status.supportsAdaptive
     supportsConversationalAwareness = status.supportsConversationalAwareness
     supportsOneBudANC = status.supportsOneBudANC
+    var controls = ["set-ear-detection"]
+    if (status.supportsNoiseControl) controls.push("set-listening-mode")
+    if (status.supportsAdaptive) controls.push("set-adaptive-level")
+    if (status.supportsConversationalAwareness) controls.push("set-conversation-awareness")
+    if (status.supportsOneBudANC) controls.push("set-one-bud-anc")
+    supportedControls = controls
     leftPod = status.left
     rightPod = status.right
     caseBattery = status.caseBattery
@@ -118,41 +169,101 @@ Item {
   }
 
   function _settle(field, reported) {
-    if (_pendingField !== field) return reported
-    if (reported === _pendingValue) {
-      _clearPending()
+    if (_pendingValues[field] === undefined) return reported
+    if (reported === _pendingValues[field]) {
+      _clearPending(field)
       return reported
     }
-    return _pendingValue
+    return _pendingValues[field]
   }
 
-  function _clearPending() {
-    _pendingField = ""
-    _pendingValue = null
-    settleTimer.stop()
+  function _setPending(field, value) {
+    var next = Object.assign({}, _pendingValues)
+    next[field] = value
+    _pendingValues = next
+    settleTimer.restart()
+  }
+
+  function _clearPending(field) {
+    if (field === undefined) {
+      _pendingValues = ({})
+      settleTimer.stop()
+      return
+    }
+    var next = Object.assign({}, _pendingValues)
+    delete next[field]
+    _pendingValues = next
+    if (Object.keys(next).length === 0) settleTimer.stop()
   }
 
   function _send(verb, field, optimistic) {
-    if (verb === "") return
-    if (commandProcess.running) {
-      _queued = { verb: verb, field: field, optimistic: optimistic }
-      _pendingField = field
-      _pendingValue = optimistic
-      root[field] = optimistic
-      settleTimer.restart()
+    var operation = controlOperation(verb)
+    if (operation.name === "" || !canControl(operation.name)) {
+      actionStatus = "This control is unavailable"
+      actionStatusTimer.restart()
       return
     }
-    _pendingField = field
-    _pendingValue = optimistic
+    _setPending(field, optimistic)
     root[field] = optimistic
-    settleTimer.restart()
-    commandProcess.command = [ctlPath, verb]
-    commandProcess.running = true
+    var call = runtime.invoke("device.control", "control", {
+      demandScope: '{"controls":["set-listening-mode","set-adaptive-level","set-conversation-awareness","set-one-bud-anc","set-ear-detection"],"resourceClass":"paired-audio-device","selection":"same-as:device.observe"}',
+      payload: {control: operation.name, value: operation.value}
+    })
+    if (!call) {
+      _clearPending(field)
+      return
+    }
+    _controlSerial += 1
+    var latest = Object.assign({}, _latestControls)
+    latest[field] = _controlSerial
+    _latestControls = latest
+    var next = controlCalls.slice()
+    next.push({call: call, field: field, serial: _controlSerial})
+    controlCalls = next
+    if (call.finished) finishControl(call)
   }
 
-  // Guards the keyboard and the bar's right click too, not just the panel rows.
+  function finishControl(call) {
+    var index = -1
+    for (var i = 0; i < controlCalls.length; i++) {
+      if (controlCalls[i].call === call) { index = i; break }
+    }
+    if (!call || index < 0) return
+    var completed = controlCalls[index]
+    var next = controlCalls.slice()
+    next.splice(index, 1)
+    controlCalls = next
+    if (_latestControls[completed.field] !== completed.serial) return
+    if (!call.ok) {
+      _clearPending(completed.field)
+      actionStatus = brokerError(call.error)
+      actionStatusTimer.restart()
+      refresh()
+      return
+    }
+    actionStatus = "Applied"
+    actionStatusTimer.restart()
+    refresh()
+  }
+
+  function controlOperation(verb) {
+    if (verb.indexOf("noise:") === 0)
+      return {name: "set-listening-mode", value: verb.slice(6)}
+    if (verb.indexOf("adaptive:") === 0)
+      return {name: "set-adaptive-level", value: parseInt(verb.slice(9), 10)}
+    if (verb === "ca:on" || verb === "ca:off")
+      return {name: "set-conversation-awareness", value: verb === "ca:on"}
+    if (verb === "onebud:on" || verb === "onebud:off")
+      return {name: "set-one-bud-anc", value: verb === "onebud:on"}
+    if (verb === "ear:one") return {name: "set-ear-detection", value: "pause-one-out"}
+    if (verb === "ear:both") return {name: "set-ear-detection", value: "pause-both-out"}
+    if (verb === "ear:off") return {name: "set-ear-detection", value: "disabled"}
+    return {name: "", value: ""}
+  }
+
+  // Guards the bar's right click too, not just the panel rows.
   function setNoiseMode(mode) {
-    if (availableModes().indexOf(mode) < 0) return
+    if (!canControl("set-listening-mode") || availableModes().indexOf(mode) < 0) return
     _send(Model.noiseModeVerb(mode), "noiseMode", mode)
   }
 
@@ -170,19 +281,23 @@ Item {
   }
 
   function setAdaptiveNoiseLevel(level) {
+    if (!canControl("set-adaptive-level")) return
     var clamped = Math.max(0, Math.min(100, Math.round(level)))
     _send("adaptive:" + clamped, "adaptiveNoiseLevel", clamped)
   }
 
   function setConversationalAwareness(enabled) {
+    if (!canControl("set-conversation-awareness")) return
     _send(enabled ? "ca:on" : "ca:off", "conversationalAwareness", enabled)
   }
 
   function setOneBudANC(enabled) {
+    if (!canControl("set-one-bud-anc")) return
     _send(enabled ? "onebud:on" : "onebud:off", "oneBudANC", enabled)
   }
 
   function setEarDetectionBehavior(behavior) {
+    if (!canControl("set-ear-detection")) return
     _send(Model.earDetectionVerb(behavior), "earDetectionBehavior", behavior)
   }
 
@@ -190,7 +305,7 @@ Item {
     setEarDetectionBehavior((earDetectionBehavior + 1) % Model.EAR_BEHAVIOR_COUNT)
   }
 
-  Timer {
+  Qml.Timer {
     // Bounds the optimistic hold, and re-reads because a verb that changed nothing
     // leaves the daemon's file untouched, so no watch fires to correct the display.
     id: settleTimer
@@ -199,44 +314,27 @@ Item {
     onTriggered: { root._clearPending(); root.refresh() }
   }
 
-  Timer {
+  Qml.Timer {
     id: actionStatusTimer
     interval: root.actionStatusMs
     repeat: false
     onTriggered: root.actionStatus = ""
   }
 
-  FileView {
-    id: stateFile
-    path: root.statePath
-    watchChanges: true
-    printErrors: false
-    // text() is stale inside the change signal, so both paths go through reload.
-    onFileChanged: reload()
-    onLoaded: root.applyLine(text())
-    onLoadFailed: root.stateGone()
+  Qml.Timer {
+    interval: root.observationIntervalMs
+    running: true
+    repeat: true
+    onTriggered: root.refresh()
   }
 
-  Process {
-    id: commandProcess
-    running: false
-    command: []
-    stderr: StdioCollector { id: commandErr; waitForEnd: true }
-    onExited: function (exitCode) {
-      if (exitCode !== 0) {
-        // Clearing the hold also stops the timer that would have re-read, so do it here.
-        root._clearPending()
-        root.refresh()
-        root._queued = null
-        // Its own field with its own timer, or the next status read wipes it unread.
-        root.actionStatus = Model.elideError(commandErr.text || "librepods-ctl rejected the command")
-        actionStatusTimer.restart()
-      }
-      if (root._queued) {
-        var next = root._queued
-        root._queued = null
-        root._send(next.verb, next.field, next.optimistic)
-      }
+  Qml.Timer { interval: 0; running: true; repeat: false; onTriggered: root.refresh() }
+  Qml.Connections {
+    target: runtime
+    function onCallFinished(call) {
+      if (root.observationInFlight && call && call === root.observeCall)
+        root.finishObserve(call)
+      else if (call) root.finishControl(call)
     }
   }
 }

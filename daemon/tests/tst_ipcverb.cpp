@@ -104,6 +104,35 @@ private slots:
                                                QStringLiteral("adaptive:"));
         QVERIFY(!out.has_value());
     }
+
+    void exactBrokerControl_parses()
+    {
+        const auto out = OpenPods::Ipc::parseBrokerControl(
+            R"({"schema_version":1,"device_address":"74:15:F5:1D:2E:0A","command":"noise:anc"})",
+            u"74:15:F5:1D:2E:0A");
+        QCOMPARE(out.value_or(QString()), QStringLiteral("noise:anc"));
+    }
+
+    void wrongBrokerDevice_returnsNullopt()
+    {
+        QVERIFY(!OpenPods::Ipc::parseBrokerControl(
+            R"({"schema_version":1,"device_address":"74:15:F5:1D:2E:0B","command":"noise:anc"})",
+            u"74:15:F5:1D:2E:0A").has_value());
+    }
+
+    void dangerousBrokerVerb_returnsNullopt()
+    {
+        QVERIFY(!OpenPods::Ipc::parseBrokerControl(
+            R"({"schema_version":1,"device_address":"74:15:F5:1D:2E:0A","command":"forget"})",
+            u"74:15:F5:1D:2E:0A").has_value());
+    }
+
+    void extraBrokerField_returnsNullopt()
+    {
+        QVERIFY(!OpenPods::Ipc::parseBrokerControl(
+            R"({"schema_version":1,"device_address":"74:15:F5:1D:2E:0A","command":"noise:anc","extra":true})",
+            u"74:15:F5:1D:2E:0A").has_value());
+    }
 };
 
 QTEST_APPLESS_MAIN(TestIpcVerb)
